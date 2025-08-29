@@ -106,6 +106,16 @@ set "CPUINFO_PACKAGE=py-cpuinfo"
 set "DIFFUSERS_VERSION="
 set "TRANSFORMERS_VERSION="
 
+:: ===== TROUBLESHOOTING FIXES - Pre-solve common issues =====
+:: Fix 1: PyAV version requirement for comfy_api_nodes (requires 14.2+)
+set "PYAV_VERSION=15.0.0"
+:: Fix 2: SAM2 for Impact Pack (optional but recommended)
+set "INSTALL_SAM2=1"
+set "SAM2_VERSION=1.1.0"
+:: Fix 3: Tokenizers version conflict resolution
+set "TOKENIZERS_VERSION=0.21.4"
+:: Fix 4: Setuptools version to avoid pkg_resources deprecation warnings
+set "SETUPTOOLS_VERSION=80.0.0"
 
 :: Utilities
 set "OPENCV_PACKAGE=opencv-python"
@@ -153,10 +163,11 @@ set "COMFYUI_CRYSTOOLS_ARGS=--listen 0.0.0.0 --port 8188 --enable-cors-header"
 :: Info
 set "COMFYUI_LOCAL_URL=http://127.0.0.1:8188"
 set "COMFYUI_PUBLIC_URL=http://0.0.0.0:8188"
-set "SCRIPT_VERSION=1.1.4"
+set "SCRIPT_VERSION=1.1.5"
 set "LAST_UPDATED=2025-08-29"
 
 echo [INFO] Constants loaded (Torch %PYTORCH_VERSION% cu128)
 echo [INFO] Script Version: %SCRIPT_VERSION%
 echo [INFO] Python: %PYTHON_VERSION%
 echo [INFO] ComfyUI Root: %COMFYUI_ROOT%
+echo [INFO] Troubleshooting fixes enabled: PyAV %PYAV_VERSION%, SAM2 %SAM2_VERSION%, Tokenizers %TOKENIZERS_VERSION%

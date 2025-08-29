@@ -333,10 +333,44 @@ if defined COMFY_REQ_EXTRAS (
 )
 
 echo.
-echo [STEP 5.6] Fix tokenizers version conflict
-echo ------------------------------------------
-echo [INFO] Fixing tokenizers version to be compatible with transformers...
-%PYTHON_EXECUTABLE% -m pip install --force-reinstall tokenizers==0.21.4
+echo [STEP 5.6] Apply troubleshooting fixes
+echo -------------------------------------
+echo [INFO] Applying pre-solved dependency fixes...
+
+REM Fix 1: PyAV version requirement for comfy_api_nodes (requires 14.2+)
+if defined PYAV_VERSION (
+  echo [INFO] Installing PyAV %PYAV_VERSION% (required for comfy_api_nodes)...
+  %PYTHON_EXECUTABLE% -m pip install --upgrade av==%PYAV_VERSION%
+)
+
+REM Fix 2: SAM2 for Impact Pack (optional but recommended)
+if /i "%INSTALL_SAM2%"=="1" (
+  echo [INFO] Installing SAM2 %SAM2_VERSION% for Impact Pack...
+  %PYTHON_EXECUTABLE% -m pip install sam2==%SAM2_VERSION%
+)
+
+REM Fix 3: Tokenizers version conflict resolution
+if defined TOKENIZERS_VERSION (
+  echo [INFO] Fixing tokenizers version to be compatible with transformers...
+  %PYTHON_EXECUTABLE% -m pip install --force-reinstall tokenizers==%TOKENIZERS_VERSION%
+)
+
+REM Fix 4: Setuptools version to avoid pkg_resources deprecation warnings
+if defined SETUPTOOLS_VERSION (
+  echo [INFO] Installing setuptools %SETUPTOOLS_VERSION% to avoid deprecation warnings...
+  %PYTHON_EXECUTABLE% -m pip install --upgrade setuptools==%SETUPTOOLS_VERSION%
+)
+
+echo.
+echo [VERIFICATION] Checking troubleshooting fixes...
+echo [INFO] Checking PyAV version (should be >= 14.2 for comfy_api_nodes)...
+%PYTHON_EXECUTABLE% -c "import av; print('[OK] PyAV version:', av.__version__)" || echo [WARN] PyAV not found
+echo [INFO] Checking SAM2 installation...
+%PYTHON_EXECUTABLE% -c "import sam2; print('[OK] SAM2 version:', sam2.__version__)" || echo [WARN] SAM2 not found (optional)
+echo [INFO] Checking tokenizers version...
+%PYTHON_EXECUTABLE% -c "import tokenizers; print('[OK] Tokenizers version:', tokenizers.__version__)" || echo [WARN] Tokenizers not found
+echo [INFO] Checking setuptools version...
+%PYTHON_EXECUTABLE% -c "import setuptools; print('[OK] Setuptools version:', setuptools.__version__)" || echo [WARN] Setuptools not found
 
 echo.
 echo [STEP 6] Install PyTorch stack (stable cu128)
@@ -601,6 +635,8 @@ if errorlevel 1 (
 ) else (
   echo [OK] All core dependencies present
 )
+
+
 
 echo [TEST 3] Launcher verification:
 if exist "%COMFYUI_ROOT%\Comfy_UI.bat" (
