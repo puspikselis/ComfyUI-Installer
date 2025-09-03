@@ -49,29 +49,101 @@ for /f "tokens=2" %%p in ('"%TASKLIST%" /fi "imagename eq python.exe" /fo list ^
 )
 echo [OK] Targeted processes stopped
 
+echo [INFO] Searching for ComfyUI installations...
+set "COMFYUI_FOUND=0"
+set "COMFYUI_PATHS="
+
+rem Check default location first
 if exist "%COMFYUI_ROOT%" (
-    echo [INFO] Removing ComfyUI directory: %COMFYUI_ROOT%
-    
-    rem Remove virtual environment if it exists (use VENV_DIR if defined)
-    if not defined VENV_DIR set "VENV_DIR=%COMFYUI_ROOT%\venv"
-    if exist "%VENV_DIR%\Scripts\python.exe" (
-        echo [INFO] Removing virtual environment at %VENV_DIR%...
-        rd /s /q "%VENV_DIR%" 2>nul
-        if exist "%VENV_DIR%" (
-            echo [WARN] Failed to remove virtual environment
-        ) else (
-            echo [OK] Virtual environment removed
+    echo [INFO] Found ComfyUI at default location: %COMFYUI_ROOT%
+    set "COMFYUI_PATHS=%COMFYUI_ROOT%"
+    set "COMFYUI_FOUND=1"
+)
+
+rem Comprehensive system-wide search for ComfyUI installations
+echo [INFO] Performing comprehensive system-wide search for ComfyUI...
+echo [INFO] This may take a few minutes depending on your system size...
+
+rem Search all drives for ComfyUI installations
+for %%d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+    if exist "%%d:\" (
+        echo [INFO] Scanning drive %%d:\ for ComfyUI installations...
+        for /f "delims=" %%f in ('dir /s /b "%%d:\*ComfyUI*" 2^>nul') do (
+            if exist "%%f\main.py" if exist "%%f\comfy" (
+                echo [INFO] Found ComfyUI installation: %%f
+                if defined COMFYUI_PATHS (
+                    set "COMFYUI_PATHS=%COMFYUI_PATHS%;%%f"
+                ) else (
+                    set "COMFYUI_PATHS=%%f"
+                )
+                set "COMFYUI_FOUND=1"
+            )
         )
     )
-    
-    rd /s /q "%COMFYUI_ROOT%" 2>nul
-    if exist "%COMFYUI_ROOT%" (
-        echo [ERROR] Failed to remove ComfyUI directory
-    ) else (
-        echo [OK] ComfyUI directory removed
+)
+
+rem Also search for any main.py files that might be ComfyUI (fallback method)
+echo [INFO] Performing fallback search for ComfyUI main.py files...
+for %%d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+    if exist "%%d:\" (
+        for /f "delims=" %%f in ('dir /s /b "%%d:\main.py" 2^>nul') do (
+            set "PARENT_DIR=%%~dpf"
+            set "PARENT_DIR=!PARENT_DIR:~0,-1!"
+            set "SKIP_FILE=0"
+            
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "python" >nul && set "SKIP_FILE=1"
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "appdata" >nul && set "SKIP_FILE=1"
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "temp" >nul && set "SKIP_FILE=1"
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "recycle" >nul && set "SKIP_FILE=1"
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "windows" >nul && set "SKIP_FILE=1"
+            echo !PARENT_DIR! | "%SystemRoot%\System32\find.exe" /i "program files" >nul && set "SKIP_FILE=1"
+            
+            if "!SKIP_FILE!"=="0" (
+                if exist "!PARENT_DIR!\comfy" (
+                    echo [INFO] Found potential ComfyUI via main.py: !PARENT_DIR!
+                    if defined COMFYUI_PATHS (
+                        set "COMFYUI_PATHS=%COMFYUI_PATHS%;!PARENT_DIR!"
+                    ) else (
+                        set "COMFYUI_PATHS=!PARENT_DIR!"
+                    )
+                    set "COMFYUI_FOUND=1"
+                )
+            )
+        )
+    )
+)
+
+if "%COMFYUI_FOUND%"=="1" (
+    echo [INFO] Removing ComfyUI installations...
+    for %%p in ("%COMFYUI_PATHS:;=" "%") do (
+        if exist "%%~p" (
+            echo [INFO] Removing ComfyUI directory: %%~p
+            
+            rem Remove virtual environment if it exists
+            if exist "%%~p\venv\Scripts\python.exe" (
+                echo [INFO] Removing virtual environment at %%~p\venv...
+                rd /s /q "%%~p\venv" 2>nul
+                if exist "%%~p\venv" (
+                    echo [WARN] Failed to remove virtual environment at %%~p\venv
+                ) else (
+                    echo [OK] Virtual environment removed from %%~p
+                )
+            )
+            
+            rem Remove the main ComfyUI directory
+            rd /s /q "%%~p" 2>nul
+            if exist "%%~p" (
+                echo [ERROR] Failed to remove ComfyUI directory: %%~p
+                echo [INFO] Attempting to remove individual files...
+                del /s /q "%%~p\*.*" 2>nul
+                for /d %%d in ("%%~p\*") do rd /s /q "%%d" 2>nul
+            ) else (
+                echo [OK] ComfyUI directory removed: %%~p
+            )
+        )
     )
 ) else (
-    echo [INFO] ComfyUI directory not found
+    echo [INFO] No ComfyUI installations found
 )
 
 echo [INFO] Cleaning caches...
@@ -119,13 +191,20 @@ for %%d in (huggingface triton flash_attn sageattention comfy) do (
 )
 echo [OK] Comprehensive cache cleanup completed
 
-echo [INFO] Cleaning downloaded models and datasets...
-if exist "%COMFYUI_ROOT%\models" rd /s /q "%COMFYUI_ROOT%\models" 2>nul
-if exist "%COMFYUI_ROOT%\ReActor" rd /s /q "%COMFYUI_ROOT%\ReActor" 2>nul
-if exist "%COMFYUI_ROOT%\SECourses_Patreon_Rocks" rd /s /q "%COMFYUI_ROOT%\SECourses_Patreon_Rocks" 2>nul
-if exist "%COMFYUI_ROOT%\custom_nodes" rd /s /q "%COMFYUI_ROOT%\custom_nodes" 2>nul
-if exist "%COMFYUI_ROOT%\temp_swarm" rd /s /q "%COMFYUI_ROOT%\temp_swarm" 2>nul
-echo [OK] Models and custom nodes cleaned
+echo [INFO] Cleaning downloaded models and datasets from discovered installations...
+if defined COMFYUI_PATHS (
+    for %%p in ("%COMFYUI_PATHS:;=" "%") do (
+        if exist "%%~p\models" (
+            echo [INFO] Cleaning models from: %%~p\models
+            rd /s /q "%%~p\models" 2>nul
+        )
+        if exist "%%~p\ReActor" rd /s /q "%%~p\ReActor" 2>nul
+        if exist "%%~p\SECourses_Patreon_Rocks" rd /s /q "%%~p\SECourses_Patreon_Rocks" 2>nul
+        if exist "%%~p\custom_nodes" rd /s /q "%%~p\custom_nodes" 2>nul
+        if exist "%%~p\temp_swarm" rd /s /q "%%~p\temp_swarm" 2>nul
+    )
+)
+echo [OK] Models and custom nodes cleaned from all installations
 
 echo [INFO] Cleaning environment variables...
 set HF_HUB_ENABLE_HF_TRANSFER= 2>nul
@@ -332,50 +411,324 @@ echo [OK] Packages uninstalled
 :skip_packages
 
 if "%remove_python%"=="true" (
-    echo [INFO] Removing Python installation...
-    winget uninstall Python --accept-source-agreements --disable-interactivity 2>nul
+    echo [INFO] Performing comprehensive system-wide Python removal...
     
-    for %%v in (3.8 3.9 3.10 3.11 3.12 3.13) do (
+    echo [INFO] Stopping all Python processes...
+    taskkill /f /im python.exe /t 2>nul
+    taskkill /f /im pythonw.exe /t 2>nul
+    taskkill /f /im pip.exe /t 2>nul
+    
+    echo [INFO] Uninstalling Python via winget...
+    winget uninstall Python --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python 3.13" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python 3.12" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python 3.11" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python 3.10" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python 3.9" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python Launcher" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python.Python.3.10" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python.Python.3.11" --accept-source-agreements --disable-interactivity 2>nul
+    winget uninstall "Python.Python.3.12" --accept-source-agreements --disable-interactivity 2>nul
+    
+    echo [INFO] Uninstalling Microsoft Store Python packages...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "Get-AppxPackage *Python* | Remove-AppxPackage" 2>nul
+    
+    echo [INFO] Running Python uninstallers from common locations...
+    for %%v in (38 39 310 311 312 313) do (
         if exist "C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python%%v\unins000.exe" (
             echo [INFO] Uninstalling Python %%v...
-            "C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python%%v\unins000.exe" /SILENT
+            "C:\Users\%USERNAME%\AppData\Local\Programs\Python\Python%%v\unins000.exe" /SILENT /SUPPRESSMSGBOXES
         )
     )
     
-    if exist "%USERPROFILE%\AppData\Local\Programs\Python" (
-        rmdir /s /q "%USERPROFILE%\AppData\Local\Programs\Python" 2>nul
+    for %%v in (3.8 3.9 3.10 3.11 3.12 3.13) do (
+        if exist "C:\Program Files\Python%%v\unins000.exe" (
+            echo [INFO] Uninstalling Python %%v from Program Files...
+            "C:\Program Files\Python%%v\unins000.exe" /SILENT /SUPPRESSMSGBOXES
+        )
     )
     
-    for /d %%d in ("C:\Python*") do rmdir /s /q "%%d" 2>nul
-    
-    if exist "%USERPROFILE%\AppData\Roaming\Python" (
-        rmdir /s /q "%USERPROFILE%\AppData\Roaming\Python" 2>nul
+    echo [INFO] Removing Python Launcher specifically...
+    for %%v in (38 39 310 311 312 313) do (
+        if exist "C:\Users\%USERNAME%\AppData\Local\Programs\Python\Launcher\unins000.exe" (
+            echo [INFO] Uninstalling Python Launcher...
+            "C:\Users\%USERNAME%\AppData\Local\Programs\Python\Launcher\unins000.exe" /SILENT /SUPPRESSMSGBOXES
+        )
     )
     
-    if exist "%USERPROFILE%\AppData\Local\pip" (
-        rmdir /s /q "%USERPROFILE%\AppData\Local\pip" 2>nul
+    echo [INFO] Performing system-wide Python directory search and removal...
+    for %%d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+        if exist "%%d:\" (
+            echo [INFO] Scanning drive %%d:\ for Python installations...
+            
+            rem Search for Python directories
+            for /f "delims=" %%p in ('dir /s /b "%%d:\Python*" 2^>nul') do (
+                if exist "%%p\python.exe" (
+                    echo [INFO] Found Python installation: %%p
+                    echo [INFO] Attempting to remove: %%p
+                    rmdir /s /q "%%p" 2>nul
+                    if exist "%%p" (
+                        echo [WARN] Could not remove: %%p (may be in use)
+                    ) else (
+                        echo [OK] Removed: %%p
+                    )
+                )
+            )
+            
+            rem Search for pip directories
+            for /f "delims=" %%p in ('dir /s /b "%%d:\pip*" 2^>nul') do (
+                if exist "%%p\pip.exe" (
+                    echo [INFO] Found pip installation: %%p
+                    rmdir /s /q "%%p" 2>nul
+                )
+            )
+        )
     )
     
-    echo [OK] Python removal completed
+    echo [INFO] Cleaning Python data directories...
+    for %%d in (C D E F G H I J K L M N O P Q R S T U V W X Y Z) do (
+        if exist "%%d:\" (
+            if exist "%%d:\Users\%USERNAME%\AppData\Local\Programs\Python" (
+                echo [INFO] Removing user Python from drive %%d:
+                rmdir /s /q "%%d:\Users\%USERNAME%\AppData\Local\Programs\Python" 2>nul
+            )
+            if exist "%%d:\Users\%USERNAME%\AppData\Roaming\Python" (
+                rmdir /s /q "%%d:\Users\%USERNAME%\AppData\Roaming\Python" 2>nul
+            )
+            if exist "%%d:\Users\%USERNAME%\AppData\Local\pip" (
+                rmdir /s /q "%%d:\Users\%USERNAME%\AppData\Local\pip" 2>nul
+            )
+        )
+    )
+    
+    echo [INFO] Cleaning Python cache directories...
+    if exist "%LOCALAPPDATA%\pip\Cache" rmdir /s /q "%LOCALAPPDATA%\pip\Cache" 2>nul
+    if exist "%USERPROFILE%\.cache\pip" rmdir /s /q "%USERPROFILE%\.cache\pip" 2>nul
+    
+    echo [INFO] Cleaning Windows registry entries...
+    reg delete "HKEY_CURRENT_USER\Software\Python" /f 2>nul
+    reg delete "HKEY_LOCAL_MACHINE\SOFTWARE\Python" /f 2>nul
+    reg delete "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Python" /f 2>nul
+    
+    echo [INFO] Removing Python from PATH...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "$env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python|pip' }) -join ';'; [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'User')" 2>nul
+    
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "$path = [Environment]::GetEnvironmentVariable('PATH', 'Machine'); $newPath = ($path -split ';' | Where-Object { $_ -notmatch 'Python|pip' }) -join ';'; [Environment]::SetEnvironmentVariable('PATH', $newPath, 'Machine')" 2>nul
+    
+    echo [INFO] Removing Python file associations...
+    reg delete "HKEY_CURRENT_USER\Software\Classes\.py" /f 2>nul
+    reg delete "HKEY_CURRENT_USER\Software\Classes\.pyw" /f 2>nul
+    reg delete "HKEY_CURRENT_USER\Software\Classes\.pyc" /f 2>nul
+    reg delete "HKEY_CURRENT_USER\Software\Classes\.pyo" /f 2>nul
+    
+    echo [INFO] Performing aggressive cleanup of remaining Python installations...
+    
+    rem Kill any remaining Python processes more aggressively
+    echo [INFO] Aggressively stopping all Python-related processes...
+    taskkill /f /im python.exe /t 2>nul
+    taskkill /f /im pythonw.exe /t 2>nul
+    taskkill /f /im pip.exe /t 2>nul
+    taskkill /f /im idle.exe /t 2>nul
+    taskkill /f /im py.exe /t 2>nul
+    timeout /t 3 /nobreak >nul
+    
+    rem Stop Windows Installer service temporarily to unlock files
+    echo [INFO] Temporarily stopping Windows Installer service...
+    net stop msiserver 2>nul
+    timeout /t 2 /nobreak >nul
+    
+    rem Uninstall via Programs and Features using msiexec
+    echo [INFO] Attempting MSI uninstall of Python installations...
+    for /f "tokens=2*" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" /s /f "Python" 2^>nul ^| find "UninstallString"') do (
+        if not "%%b"=="" (
+            echo [INFO] Running uninstaller: %%b
+            %%b /quiet /norestart 2>nul
+        )
+    )
+    
+    rem Force remove stubborn Python directories with enhanced permissions
+    for %%v in (310 311 312 313) do (
+        if exist "C:\Program Files\Python%%v" (
+            echo [INFO] Force removing Python %%v installation...
+            
+            rem Take ownership and grant full permissions
+            takeown /f "C:\Program Files\Python%%v" /r /d y 2>nul
+            icacls "C:\Program Files\Python%%v" /grant administrators:F /t 2>nul
+            icacls "C:\Program Files\Python%%v" /grant "%USERNAME%":F /t 2>nul
+            
+            rem Remove read-only attributes
+            attrib -r "C:\Program Files\Python%%v\*.*" /s /d 2>nul
+            
+            rem Try different removal methods
+            rmdir /s /q "C:\Program Files\Python%%v" 2>nul
+            if exist "C:\Program Files\Python%%v" (
+                echo [INFO] Trying alternative removal method...
+                rd /s /q "C:\Program Files\Python%%v" 2>nul
+            )
+            if exist "C:\Program Files\Python%%v" (
+                echo [INFO] Trying PowerShell removal method...
+                "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Remove-Item 'C:\Program Files\Python%%v' -Recurse -Force" 2>nul
+            )
+            if exist "C:\Program Files\Python%%v" (
+                echo [WARN] Python %%v directory still exists - scheduling for removal at next reboot
+                "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command "Move-Item 'C:\Program Files\Python%%v' 'C:\Program Files\Python%%v.delete' -Force" 2>nul
+                echo 'Remove-Item "C:\Program Files\Python%%v.delete" -Recurse -Force' >> "%TEMP%\cleanup_python.ps1"
+            ) else (
+                echo [OK] Python %%v force removed successfully
+            )
+        )
+    )
+    
+    rem Restart Windows Installer service
+    echo [INFO] Restarting Windows Installer service...
+    net start msiserver 2>nul
+    
+    rem Remove any remaining Python registry entries more thoroughly
+    echo [INFO] Deep cleaning Python registry entries...
+    for /f "tokens=*" %%k in ('reg query "HKLM\SOFTWARE" /k /f "Python" 2^>nul') do (
+        echo [INFO] Removing registry key: %%k
+        reg delete "%%k" /f 2>nul
+    )
+    for /f "tokens=*" %%k in ('reg query "HKCU\SOFTWARE" /k /f "Python" 2^>nul') do (
+        echo [INFO] Removing registry key: %%k
+        reg delete "%%k" /f 2>nul
+    )
+    
+    rem Remove Python from Windows App list using PowerShell
+    echo [INFO] Removing Python from Windows Apps list...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like '*Python*' } | ForEach-Object { $_.Uninstall() }" 2>nul
+    
+    echo [INFO] Cleaning Python installer files and caches...
+    if exist "%USERPROFILE%\Downloads\python-*.exe" (
+        echo [INFO] Removing Python installer from Downloads...
+        del /q "%USERPROFILE%\Downloads\python-*.exe" 2>nul
+        echo [OK] Python installer removed from Downloads
+    )
+    
+    echo [INFO] Cleaning Package Cache...
+    for /f "delims=" %%d in ('dir /s /b "%LOCALAPPDATA%\Package Cache\*python*" 2^>nul') do (
+        echo [INFO] Removing package cache: %%d
+        rd /s /q "%%d" 2>nul
+        if not exist "%%d" (
+            echo [OK] Removed: %%d
+        )
+    )
+    
+    echo [INFO] Removing Windows Apps aliases...
+    if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe" (
+        del /q "%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe" 2>nul
+        echo [OK] Removed python.exe alias
+    )
+    if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe" (
+        del /q "%LOCALAPPDATA%\Microsoft\WindowsApps\python3.exe" 2>nul
+        echo [OK] Removed python3.exe alias
+    )
+    if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\py.exe" (
+        del /q "%LOCALAPPDATA%\Microsoft\WindowsApps\py.exe" 2>nul
+        echo [OK] Removed py.exe alias
+    )
+    
+    echo [INFO] Cleaning Microsoft Store Python package directory...
+    if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe" (
+        for /f "delims=" %%f in ('dir /b "%LOCALAPPDATA%\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\python*" 2^>nul') do (
+            echo [INFO] Removing Store Python: %%f
+            del /q "%LOCALAPPDATA%\Microsoft\WindowsApps\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\%%f" 2>nul
+        )
+    )
+    
+    echo [INFO] Cleaning Python installation logs...
+    del /q "%LOCALAPPDATA%\Temp\Python*.log" 2>nul
+    del /q "%TEMP%\Python*.log" 2>nul
+    echo [OK] Python logs cleaned
+    
+    echo [INFO] Removing Python from Start Menu...
+    if exist "%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs\Python*" (
+        rd /s /q "%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs\Python*" 2>nul
+        echo [OK] Python Start Menu entries removed
+    )
+    if exist "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Python*" (
+        rd /s /q "%USERPROFILE%\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Python*" 2>nul
+        echo [OK] User Python Start Menu entries removed
+    )
+    
+    echo [INFO] Force refreshing Apps list using PowerShell...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "try { Get-AppxPackage -AllUsers | Where-Object { $_.Name -like '*Python*' } | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue } catch { }"
+    
+    echo [INFO] Cleaning Windows Installer cache...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "try { Get-ChildItem -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' | Where-Object { $_.GetValue('DisplayName') -like '*Python*' } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue } catch { }"
+    
+    echo [INFO] Removing stubborn Python WMI/MSI entries...
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -Command ^
+    "$registryPaths = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{F007E8E2-B4A7-4559-BB78-7AC533822431}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{59ED0114-0C86-4B18-83E2-929AD7D232AD}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0DDDDA24-0876-4BEF-AC9B-26D8B78DCCC9}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{1F097B66-81E9-46FB-BBAC-315C5F50CF94}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{92CFA54C-9CE5-4284-83FD-1D0B8AB2AB69}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{067C6FFC-0FD1-4F3A-8E94-58F091BCC0D5}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E2BC2EBD-7260-458B-A42C-3322DCB0B82F}', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{0CBB496F-1D15-42F1-AA45-C01C95196EC8}'); foreach ($regPath in $registryPaths) { if (Test-Path $regPath) { Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue } }"
+    
+    echo [INFO] Clearing Windows Store cache to refresh apps list...
+    start /min wsreset.exe
+    timeout /t 5 /nobreak >nul 2>&1
+    taskkill /f /im WinStore.App.exe 2>nul
+    
+    echo [OK] Comprehensive system-wide Python removal completed
+)
+
+echo [INFO] Cleaning ComfyUI registry entries...
+reg delete "HKEY_CURRENT_USER\Software\ComfyUI" /f 2>nul
+reg delete "HKEY_LOCAL_MACHINE\SOFTWARE\ComfyUI" /f 2>nul
+
+echo [INFO] Cleaning additional temporary files...
+del /q "%TEMP%\comfyui_*.log" 2>nul
+del /q "%TEMP%\pytorch_*.tmp" 2>nul
+del /q "%USERPROFILE%\comfyui_*.log" 2>nul
+
+echo [INFO] Final cleanup verification...
+set "CLEANUP_SUCCESS=1"
+if defined COMFYUI_PATHS (
+    for %%p in ("%COMFYUI_PATHS:;=" "%") do (
+        if exist "%%p" (
+            echo [WARN] ComfyUI directory still exists: %%p
+            set "CLEANUP_SUCCESS=0"
+        )
+    )
 )
 
 echo.
 echo ========================================
-echo UNINSTALL COMPLETED SUCCESSFULLY!
+if "%CLEANUP_SUCCESS%"=="1" (
+    echo UNINSTALL COMPLETED SUCCESSFULLY!
+) else (
+    echo UNINSTALL COMPLETED WITH WARNINGS!
+    echo Some directories could not be removed - check above for details
+)
 echo ========================================
 echo.
 
 if "%remove_python%"=="true" (
     echo Complete system cleanup finished!
-    echo - ComfyUI removed
-    echo - Python removed
-    echo - All caches cleaned
+    if defined COMFYUI_PATHS (
+        echo - ComfyUI installations found and removed from:
+        for %%p in ("%COMFYUI_PATHS:;=" "%") do echo   * %%p
+    ) else (
+        echo - No ComfyUI installations found
+    )
+    echo - Python completely removed from system
+    echo - All caches and temporary files cleaned
+    echo - Registry entries cleaned
+    echo - PATH environment variables cleaned
 ) else (
     echo ComfyUI uninstallation finished!
-    echo - ComfyUI removed
-    echo - Packages uninstalled  
-    echo - Caches cleaned
-    echo - Python preserved
+    if defined COMFYUI_PATHS (
+        echo - ComfyUI installations found and removed from:
+        for %%p in ("%COMFYUI_PATHS:;=" "%") do echo   * %%p
+    ) else (
+        echo - No ComfyUI installations found
+    )
+    echo - Python packages uninstalled
+    echo - Caches and temporary files cleaned
+    echo - Python preserved on system
 )
 
 echo.
