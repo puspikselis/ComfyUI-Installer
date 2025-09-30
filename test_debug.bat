@@ -40,3 +40,4 @@ if defined SETUPTOOLS_VERSION (
 
 echo Test completed.
 pause
+
